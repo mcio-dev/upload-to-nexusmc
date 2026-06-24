@@ -61,9 +61,33 @@ jobs:
         with:
           api_token: ${{ secrets.NEXUSMC_API_TOKEN }}
           resource_id: ${{ vars.NEXUSMC_RESOURCE_ID }}
+          version: ${{ github.event.release.tag_name }}
           # The single file you want to upload
           file_path: build/libs/PluginName-${{ github.event.release.tag_name }}.jar
+```
+
+If multiple files needed, replace the tail below
+```yaml
+      - uses: mcio-dev/upload-to-nexusmc@v1
+        with:
+          api_token: ${{ secrets.NEXUSMC_API_TOKEN }}
+          resource_id: ${{ vars.NEXUSMC_RESOURCE_ID }}
           version: ${{ github.event.release.tag_name }}
+          # Using multiple files
+          files: |
+            [
+              {
+                "path": "neoforge/build/libs/ModName-${{ github.event.release.tag_name }}-neoforge.jar",
+                "isPrimary": true,
+                "loaderIds": ["neoforge"],
+                "gameVersions": ["26.1", "26.1.1", "26.1.2"]
+              },
+              {
+                "path": "fabric/build/libs/ModName-${{ github.event.release.tag_name }}-fabric.jar",
+                "loaderIds": ["fabric"],
+                "gameVersions": ["26.1", "26.1.1", "26.1.2"]
+              }
+            ]
 ```
 
 ## Inputs
