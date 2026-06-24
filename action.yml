@@ -15,8 +15,12 @@ inputs:
     required: true
     type: string
   file_path:
-    description: 'Path to the file to upload'
-    required: true
+    description: 'Path to one file to upload (legacy compatible; use files for multiple files)'
+    required: false
+    type: string
+  files:
+    description: 'Resource files as JSON array. Each item supports path, isPrimary, subcategoryIds, loaderIds, gameVersions, mcVersions, extractCode, and extra resource file fields.'
+    required: false
     type: string
   version:
     description: 'Resource version number'
@@ -31,9 +35,8 @@ inputs:
     required: false
     type: string
   publish_version:
-    description: 'Whether to publish as a new version'
+    description: 'Whether to publish as a new version. Omit it when only patching metadata, docs, or tutorials.'
     required: false
-    default: 'true'
     type: boolean
   mc_versions:
     description: 'Supported Minecraft versions (JSON array)'
@@ -68,9 +71,8 @@ inputs:
     required: false
     type: string
   is_draft:
-    description: 'Save as draft'
+    description: 'Save as draft. Omit it to leave the current draft/publish state unchanged.'
     required: false
-    default: 'false'
     type: boolean
 
 runs:

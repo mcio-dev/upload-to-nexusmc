@@ -72,11 +72,12 @@ jobs:
 |-------|----------|-------------|
 | `api_token` | Yes | NexusMC Personal API Token |
 | `resource_id` | Yes | NexusMC Resource ID |
-| `file_path` | No | Path to the file to upload |
+| `file_path` | No | Path to one file to upload. Kept for compatibility and converted to one primary `files` item. |
+| `files` | No | Resource files as JSON array. Each item requires `path` and may include `isPrimary`, `subcategoryIds`, `loaderIds`, `gameVersions`, `mcVersions`, `extractCode`, or other NexusMC file fields. |
 | `version` | No | Resource version number |
 | `version_title` | No | Version title |
 | `changelog` | No | Changelog for the new version |
-| `publish_version` | No | Whether to publish as a new version (default: true) |
+| `publish_version` | No | Whether to publish as a new version. Omit it when only patching metadata, docs, or tutorials. |
 | `mc_versions` | No | Supported Minecraft versions (JSON array, e.g. '["1.20.1"]') |
 | `tags` | No | Custom tags (JSON array) |
 | `official_tags` | No | Official tags (JSON array) |
@@ -85,7 +86,7 @@ jobs:
 | `documentation_post_refs` | No | Documentation post references (JSON array) |
 | `documentation_url` | No | External documentation URL |
 | `dependencies` | No | Dependencies (JSON array) |
-| `is_draft` | No | Save as draft (default: false) |
+| `is_draft` | No | Save as draft. Omit it to leave the current draft/publish state unchanged. |
 
 ## Outputs
 
@@ -116,7 +117,61 @@ jobs:
     version: 1.2.0
 ```
 
-### With Full Options
+### Multiple Files With Per-File Metadata
+
+```yaml
+- uses: mcio-dev/upload-to-nexusmc@v1
+  with:
+    api_token: ${{ secrets.NEXUSMC_API_TOKEN }}
+    resource_id: ${{ vars.NEXUSMC_RESOURCE_ID }}
+    files: |
+      [
+        {
+          "path": "dist/plugin-forge.jar",
+          "isPrimary": true,
+          "loaderIds": ["forge"],
+          "gameVersions": ["1.20.1", "1.21"]
+        },
+        {
+          "path": "dist/plugin-fabric.jar",
+          "loaderIds": ["fabric"],
+          "gameVersions": ["1.20.1", "1.21"]
+        }
+      ]
+    version: 1.2.0
+    version_title: "Support Minecraft 1.21"
+    changelog: |
+      - Fixed bug #123
+      - Improved performance
+    publish_version: true
+    mc_versions: '["1.20.1", "1.21"]'
+    tags: '["auto-sync", "feature"]'
+```
+
+The action uploads local files through NexusMC first, then sends the returned `url`, `filename`, and `size` as the resource update API's `files` array. This matches the current `PATCH /api/resources/{id}` recommendation and lets each file keep its own loader, version, subcategory, or extract-code metadata.
+
+### Patch Documentation Or Tutorials Only
+
+```yaml
+- uses: mcio-dev/upload-to-nexusmc@v1
+  with:
+    api_token: ${{ secrets.NEXUSMC_API_TOKEN }}
+    resource_id: ${{ vars.NEXUSMC_RESOURCE_ID }}
+    documentation_url: https://docs.example.com/my-plugin
+    tutorial_post_ids: '["tutorial_post_id"]'
+    documentation_post_refs: |
+      [
+        {
+          "id": "getting-started",
+          "title": "Getting Started",
+          "items": [
+            { "id": "doc_install_post_id", "type": "install" }
+          ]
+        }
+      ]
+```
+
+### Single File Compatibility With Full Options
 
 ```yaml
 - uses: mcio-dev/upload-to-nexusmc@v1
@@ -130,6 +185,7 @@ jobs:
     changelog: |
       - Fixed bug #123
       - Improved performance
+    publish_version: true
     mc_versions: '["1.20.1", "1.21"]'
     tags: '["auto-sync", "feature"]'
     documentation_url: https://docs.example.com

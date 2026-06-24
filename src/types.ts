@@ -2,10 +2,11 @@ export interface Inputs {
   apiToken: string;
   resourceId: string;
   filePath: string;
+  files?: ResourceFileInput[];
   version?: string;
   versionTitle?: string;
   changelog?: string;
-  publishVersion: boolean;
+  publishVersion?: boolean;
   mcVersions?: string[];
   tags?: string[];
   officialTags?: string[];
@@ -14,7 +15,31 @@ export interface Inputs {
   documentationPostRefs?: string | any[];
   documentationUrl?: string;
   dependencies?: string[];
-  isDraft: boolean;
+  isDraft?: boolean;
+}
+
+export interface ResourceFileInput {
+  path: string;
+  isPrimary?: boolean;
+  subcategoryIds?: string[];
+  loaderIds?: string[];
+  gameVersions?: string[];
+  mcVersions?: string[];
+  extractCode?: string;
+  [key: string]: any;
+}
+
+export interface UploadedResourceFile {
+  url: string;
+  fileName: string;
+  fileSize: number;
+  isPrimary?: boolean;
+  subcategoryIds?: string[];
+  loaderIds?: string[];
+  gameVersions?: string[];
+  mcVersions?: string[];
+  extractCode?: string;
+  [key: string]: any;
 }
 
 export interface UploadResponse {
@@ -23,6 +48,10 @@ export interface UploadResponse {
   size: number;
   sha256?: string;
   sha1?: string;
+}
+
+export interface MultipleUploadResponse {
+  files: UploadResponse[];
 }
 
 export interface UploadImageResponse {

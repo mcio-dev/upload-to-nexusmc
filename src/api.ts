@@ -2,8 +2,8 @@ import * as core from '@actions/core';
 import * as fs from 'fs';
 import * as path from 'path';
 import {
-  Inputs,
   UploadResponse,
+  MultipleUploadResponse,
   UploadImageResponse,
   ResourceResponse,
   ErrorResponse,
@@ -50,6 +50,57 @@ export async function uploadFile(
 
   core.info(`File uploaded successfully: ${(data as UploadResponse).url}`);
   return data as UploadResponse;
+}
+
+/**
+ * Upload multiple files to NexusMC
+ */
+export async function uploadFiles(
+  apiToken: string,
+  filePaths: string[]
+): Promise<UploadResponse[]> {
+  if (filePaths.length === 0) {
+    return [];
+  }
+
+  if (filePaths.length === 1) {
+    return [await uploadFile(apiToken, filePaths[0])];
+  }
+
+  core.info(`Uploading ${filePaths.length} files`);
+
+  const formData = new FormData();
+  for (const filePath of filePaths) {
+    if (!fs.existsSync(filePath)) {
+      throw new Error(`File not found: ${filePath}`);
+    }
+
+    const fileBuffer = fs.readFileSync(filePath);
+    const fileName = path.basename(filePath);
+    const blob = new Blob([fileBuffer]);
+    // @ts-ignore - FormData types in Node.js
+    formData.append('file', blob, fileName);
+  }
+
+  const response = await fetch(`${BASE_URL}/upload/multiple`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiToken}`,
+      'Accept': 'application/json'
+    },
+    body: formData as any
+  });
+
+  const data = await response.json() as MultipleUploadResponse | ErrorResponse;
+
+  if (!response.ok) {
+    const error = data as ErrorResponse;
+    throw new Error(`Multiple upload failed: ${error.error || response.statusText}`);
+  }
+
+  const files = (data as MultipleUploadResponse).files;
+  core.info(`Files uploaded successfully: ${files.map((file) => file.filename).join(', ')}`);
+  return files;
 }
 
 /**

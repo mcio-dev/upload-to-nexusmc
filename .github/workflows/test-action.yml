@@ -34,7 +34,18 @@ jobs:
         with:
           api_token: ${{ secrets.NEXUSMC_API_TOKEN }}
           resource_id: ${{ github.event.inputs.resource_id }}
-          file_path: action.yml
+          files: |
+            [
+              {
+                "path": "action.yml",
+                "isPrimary": true,
+                "gameVersions": ["1.20.1"]
+              },
+              {
+                "path": "README.md",
+                "gameVersions": ["1.21"]
+              }
+            ]
           version: ${{ github.event.inputs.version }}
           version_title: "Test Upload"
           changelog: "This is a test upload from GitHub Actions"

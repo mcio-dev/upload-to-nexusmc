@@ -1,6 +1,79 @@
 import * as core from '@actions/core';
-import { Inputs, BASE_URL } from './types';
-import { uploadFile, uploadImage, updateResource, parseJsonInput } from './api';
+import { Inputs, BASE_URL, ResourceFileInput, UploadedResourceFile, UploadResponse } from './types';
+import { uploadFiles, uploadImage, updateResource, parseJsonInput } from './api';
+
+function getOptionalBooleanInput(name: string): boolean | undefined {
+  const rawValue = core.getInput(name, { required: false });
+  if (!rawValue) return undefined;
+  return core.getBooleanInput(name, { required: false });
+}
+
+function parseResourceFilesInput(input: string | undefined): ResourceFileInput[] | undefined {
+  if (!input) return undefined;
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(input);
+  } catch {
+    throw new Error('files must be a valid JSON array');
+  }
+
+  if (!Array.isArray(parsed)) {
+    throw new Error('files must be a JSON array');
+  }
+
+  return parsed.map((item, index) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      throw new Error(`files[${index}] must be an object`);
+    }
+
+    const file = item as ResourceFileInput;
+    if (!file.path || typeof file.path !== 'string') {
+      throw new Error(`files[${index}].path is required`);
+    }
+
+    return file;
+  });
+}
+
+function getResourceFileInputs(inputs: Inputs): ResourceFileInput[] {
+  if (inputs.files && inputs.files.length > 0) {
+    return inputs.files;
+  }
+
+  if (inputs.filePath) {
+    return [{ path: inputs.filePath, isPrimary: true }];
+  }
+
+  return [];
+}
+
+function mapUploadedResourceFiles(
+  fileInputs: ResourceFileInput[],
+  uploadResults: UploadResponse[]
+): UploadedResourceFile[] {
+  if (fileInputs.length !== uploadResults.length) {
+    throw new Error(`Upload result count mismatch: expected ${fileInputs.length}, got ${uploadResults.length}`);
+  }
+
+  const uploadedFiles = fileInputs.map((fileInput, index) => {
+    const { path: _path, ...fileMetadata } = fileInput;
+    const uploadResult = uploadResults[index];
+
+    return {
+      ...fileMetadata,
+      url: uploadResult.url,
+      fileName: uploadResult.filename,
+      fileSize: uploadResult.size
+    };
+  });
+
+  if (uploadedFiles.length > 0 && !uploadedFiles.some((file) => file.isPrimary)) {
+    uploadedFiles[0].isPrimary = true;
+  }
+
+  return uploadedFiles;
+}
 
 async function run(): Promise<void> {
   try {
@@ -9,10 +82,11 @@ async function run(): Promise<void> {
       apiToken: core.getInput('api_token', { required: true }),
       resourceId: core.getInput('resource_id', { required: true }),
       filePath: core.getInput('file_path', { required: false }),
+      files: parseResourceFilesInput(core.getInput('files', { required: false })),
       version: core.getInput('version', { required: false }),
       versionTitle: core.getInput('version_title', { required: false }),
       changelog: core.getInput('changelog', { required: false }),
-      publishVersion: core.getBooleanInput('publish_version', { required: false }),
+      publishVersion: getOptionalBooleanInput('publish_version'),
       mcVersions: parseJsonInput(core.getInput('mc_versions', { required: false })),
       tags: parseJsonInput(core.getInput('tags', { required: false })),
       officialTags: parseJsonInput(core.getInput('official_tags', { required: false })),
@@ -21,7 +95,7 @@ async function run(): Promise<void> {
       documentationPostRefs: parseJsonInput(core.getInput('documentation_post_refs', { required: false })),
       documentationUrl: core.getInput('documentation_url', { required: false }),
       dependencies: parseJsonInput(core.getInput('dependencies', { required: false })),
-      isDraft: core.getBooleanInput('is_draft', { required: false })
+      isDraft: getOptionalBooleanInput('is_draft')
     };
 
     // Validate required inputs
@@ -38,9 +112,7 @@ async function run(): Promise<void> {
     core.info(`Resource ID: ${inputs.resourceId}`);
 
     // Prepare update data
-    const updateData: Record<string, any> = {
-      isDraft: inputs.isDraft
-    };
+    const updateData: Record<string, any> = {};
 
     // Add version info if provided
     if (inputs.version) {
@@ -54,6 +126,9 @@ async function run(): Promise<void> {
     }
     if (inputs.publishVersion !== undefined) {
       updateData.publishVersion = inputs.publishVersion;
+    }
+    if (inputs.isDraft !== undefined) {
+      updateData.isDraft = inputs.isDraft;
     }
     if (inputs.mcVersions && inputs.mcVersions.length > 0) {
       updateData.mcVersions = inputs.mcVersions;
@@ -77,18 +152,18 @@ async function run(): Promise<void> {
       updateData.dependencies = inputs.dependencies;
     }
 
-    // Upload file if provided
-    let fileUploaded = false;
-    if (inputs.filePath) {
+    // Upload resource files if provided
+    const resourceFileInputs = getResourceFileInputs(inputs);
+    let filesUploaded = false;
+    if (resourceFileInputs.length > 0) {
       try {
-        const uploadResult = await uploadFile(inputs.apiToken, inputs.filePath);
-        updateData.fileUrl = uploadResult.url;
-        updateData.fileName = uploadResult.filename;
-        updateData.fileSize = uploadResult.size;
-        fileUploaded = true;
-        core.info(`File uploaded: ${uploadResult.filename} (${uploadResult.size} bytes)`);
+        const uploadResults = await uploadFiles(inputs.apiToken, resourceFileInputs.map((file) => file.path));
+        const resourceFiles = mapUploadedResourceFiles(resourceFileInputs, uploadResults);
+        updateData.files = resourceFiles;
+        filesUploaded = true;
+        core.info(`Resource files uploaded: ${resourceFiles.map((file) => file.fileName).join(', ')}`);
       } catch (error) {
-        core.setFailed(`Failed to upload file: ${(error as Error).message}`);
+        core.setFailed(`Failed to upload resource files: ${(error as Error).message}`);
         return;
       }
     }
@@ -105,9 +180,9 @@ async function run(): Promise<void> {
       }
     }
 
-    // If no file and no version info, warn user
-    if (!fileUploaded && !inputs.version) {
-      core.warning('No file to upload and no version specified. The resource will not be updated.');
+    // If no update fields are provided, warn user
+    if (Object.keys(updateData).length === 0) {
+      core.warning('No update fields specified. The resource will not be updated.');
       return;
     }
 
