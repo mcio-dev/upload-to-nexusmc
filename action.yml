@@ -76,5 +76,34 @@ inputs:
     type: boolean
 
 runs:
-  using: 'node20'
-  main: 'dist/index.js'
+  using: 'composite'
+  steps:
+    - name: Build Upload to NexusMC action
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: |
+        npm ci
+        npm run build
+
+    - name: Run Upload to NexusMC action
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      env:
+        INPUT_API_TOKEN: ${{ inputs.api_token }}
+        INPUT_RESOURCE_ID: ${{ inputs.resource_id }}
+        INPUT_FILE_PATH: ${{ inputs.file_path }}
+        INPUT_FILES: ${{ inputs.files }}
+        INPUT_VERSION: ${{ inputs.version }}
+        INPUT_VERSION_TITLE: ${{ inputs.version_title }}
+        INPUT_CHANGELOG: ${{ inputs.changelog }}
+        INPUT_PUBLISH_VERSION: ${{ inputs.publish_version }}
+        INPUT_MC_VERSIONS: ${{ inputs.mc_versions }}
+        INPUT_TAGS: ${{ inputs.tags }}
+        INPUT_OFFICIAL_TAGS: ${{ inputs.official_tags }}
+        INPUT_COVER_IMAGE_PATH: ${{ inputs.cover_image_path }}
+        INPUT_TUTORIAL_POST_IDS: ${{ inputs.tutorial_post_ids }}
+        INPUT_DOCUMENTATION_POST_REFS: ${{ inputs.documentation_post_refs }}
+        INPUT_DOCUMENTATION_URL: ${{ inputs.documentation_url }}
+        INPUT_DEPENDENCIES: ${{ inputs.dependencies }}
+        INPUT_IS_DRAFT: ${{ inputs.is_draft }}
+      run: node "${{ github.action_path }}/dist/index.js"
