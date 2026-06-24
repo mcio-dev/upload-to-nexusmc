@@ -1,6 +1,16 @@
 import * as core from '@actions/core';
-import { Inputs, BASE_URL, ResourceFileInput, UploadedResourceFile, UploadResponse } from './types';
+import * as fs from 'fs';
+import { Inputs, BASE_URL, IfNoFilesFound, ResourceFileInput, UploadedResourceFile, UploadResponse } from './types';
 import { uploadFiles, uploadImage, updateResource, parseJsonInput } from './api';
+
+function getIfNoFilesFoundInput(): IfNoFilesFound {
+  const value = core.getInput('if_no_files_found', { required: false }) || process.env.INPUT_IF_NO_FILES_FOUND || 'error';
+  if (value === 'warn' || value === 'error' || value === 'ignore') {
+    return value;
+  }
+
+  throw new Error('if_no_files_found must be one of: warn, error, ignore');
+}
 
 function getOptionalBooleanInput(name: string): boolean | undefined {
   const rawValue = core.getInput(name, { required: false });
@@ -48,6 +58,33 @@ function getResourceFileInputs(inputs: Inputs): ResourceFileInput[] {
   return [];
 }
 
+function filterExistingResourceFileInputs(
+  fileInputs: ResourceFileInput[],
+  ifNoFilesFound: IfNoFilesFound
+): ResourceFileInput[] | undefined {
+  const existingFiles = fileInputs.filter((file) => fs.existsSync(file.path));
+  const missingFiles = fileInputs.filter((file) => !fs.existsSync(file.path));
+
+  if (missingFiles.length === 0) {
+    return existingFiles;
+  }
+
+  const missingPaths = missingFiles.map((file) => file.path).join(', ');
+  const message = `Provided resource file path(s) do not exist: ${missingPaths}`;
+
+  if (ifNoFilesFound === 'error') {
+    throw new Error(message);
+  }
+
+  if (ifNoFilesFound === 'warn') {
+    core.warning(message);
+  } else {
+    core.info(message);
+  }
+
+  return existingFiles.length > 0 ? existingFiles : undefined;
+}
+
 function mapUploadedResourceFiles(
   fileInputs: ResourceFileInput[],
   uploadResults: UploadResponse[]
@@ -83,6 +120,7 @@ async function run(): Promise<void> {
       resourceId: core.getInput('resource_id', { required: true }),
       filePath: core.getInput('file_path', { required: false }),
       files: parseResourceFilesInput(core.getInput('files', { required: false })),
+      ifNoFilesFound: getIfNoFilesFoundInput(),
       version: core.getInput('version', { required: false }),
       versionTitle: core.getInput('version_title', { required: false }),
       changelog: core.getInput('changelog', { required: false }),
@@ -154,11 +192,12 @@ async function run(): Promise<void> {
 
     // Upload resource files if provided
     const resourceFileInputs = getResourceFileInputs(inputs);
+    const existingResourceFileInputs = filterExistingResourceFileInputs(resourceFileInputs, inputs.ifNoFilesFound);
     let filesUploaded = false;
-    if (resourceFileInputs.length > 0) {
+    if (existingResourceFileInputs && existingResourceFileInputs.length > 0) {
       try {
-        const uploadResults = await uploadFiles(inputs.apiToken, resourceFileInputs.map((file) => file.path));
-        const resourceFiles = mapUploadedResourceFiles(resourceFileInputs, uploadResults);
+        const uploadResults = await uploadFiles(inputs.apiToken, existingResourceFileInputs.map((file) => file.path));
+        const resourceFiles = mapUploadedResourceFiles(existingResourceFileInputs, uploadResults);
         updateData.files = resourceFiles;
         filesUploaded = true;
         core.info(`Resource files uploaded: ${resourceFiles.map((file) => file.fileName).join(', ')}`);

@@ -1,8 +1,11 @@
+export type IfNoFilesFound = 'warn' | 'error' | 'ignore';
+
 export interface Inputs {
   apiToken: string;
   resourceId: string;
   filePath: string;
   files?: ResourceFileInput[];
+  ifNoFilesFound: IfNoFilesFound;
   version?: string;
   versionTitle?: string;
   changelog?: string;

@@ -46,6 +46,7 @@ jobs:
                 "gameVersions": ["1.21"]
               }
             ]
+          if_no_files_found: warn
           version: ${{ github.event.inputs.version }}
           version_title: "Test Upload"
           changelog: "This is a test upload from GitHub Actions"

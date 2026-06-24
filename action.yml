@@ -22,6 +22,11 @@ inputs:
     description: 'Resource files as JSON array. Each item supports path, isPrimary, subcategoryIds, loaderIds, gameVersions, mcVersions, extractCode, and extra resource file fields.'
     required: false
     type: string
+  if_no_files_found:
+    description: 'Behavior when file_path/files are provided but no files exist. Options: warn, error, ignore.'
+    required: false
+    default: 'error'
+    type: string
   version:
     description: 'Resource version number'
     required: false
@@ -36,7 +41,7 @@ inputs:
     type: string
   publish_version:
     description: 'Whether to publish as a new version. Omit it when only patching metadata, docs, or tutorials.'
-    required: false
+    required: true
     type: boolean
   mc_versions:
     description: 'Supported Minecraft versions (JSON array)'
@@ -93,6 +98,7 @@ runs:
         INPUT_RESOURCE_ID: ${{ inputs.resource_id }}
         INPUT_FILE_PATH: ${{ inputs.file_path }}
         INPUT_FILES: ${{ inputs.files }}
+        INPUT_IF_NO_FILES_FOUND: ${{ inputs.if_no_files_found }}
         INPUT_VERSION: ${{ inputs.version }}
         INPUT_VERSION_TITLE: ${{ inputs.version_title }}
         INPUT_CHANGELOG: ${{ inputs.changelog }}

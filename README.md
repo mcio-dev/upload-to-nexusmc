@@ -74,10 +74,11 @@ jobs:
 | `resource_id` | Yes | NexusMC Resource ID |
 | `file_path` | No | Path to one file to upload. Kept for compatibility and converted to one primary `files` item. |
 | `files` | No | Resource files as JSON array. Each item requires `path` and may include `isPrimary`, `subcategoryIds`, `loaderIds`, `gameVersions`, `mcVersions`, `extractCode`, or other NexusMC file fields. |
+| `if_no_files_found` | No | Behavior when `file_path` or `files` is provided but no matching local files exist. Options: `error` (default), `warn`, `ignore`. |
 | `version` | No | Resource version number |
 | `version_title` | No | Version title |
 | `changelog` | No | Changelog for the new version |
-| `publish_version` | No | Whether to publish as a new version. Omit it when only patching metadata, docs, or tutorials. |
+| `publish_version` | No | Whether to publish as a new version. Omit it when only patching metadata, docs, or tutorials. (default: true) |
 | `mc_versions` | No | Supported Minecraft versions (JSON array, e.g. '["1.20.1"]') |
 | `tags` | No | Custom tags (JSON array) |
 | `official_tags` | No | Official tags (JSON array) |
@@ -138,6 +139,7 @@ jobs:
           "gameVersions": ["1.20.1", "1.21"]
         }
       ]
+    if_no_files_found: error
     version: 1.2.0
     version_title: "Support Minecraft 1.21"
     changelog: |
@@ -148,7 +150,7 @@ jobs:
     tags: '["auto-sync", "feature"]'
 ```
 
-The action uploads local files through NexusMC first, then sends the returned `url`, `filename`, and `size` as the resource update API's `files` array. This matches the current `PATCH /api/resources/{id}` recommendation and lets each file keep its own loader, version, subcategory, or extract-code metadata.
+The action uploads local files through NexusMC first, then sends the returned `url`, `filename`, and `size` as the resource update API's `files` array. This matches the current `PATCH /api/resources/{id}` recommendation and lets each file keep its own loader, version, subcategory, or extract-code metadata. Because `file_path` and `files[].path` are exact paths, any missing specified file triggers `if_no_files_found`: `error` fails the action, `warn` warns and uploads existing files, and `ignore` silently uploads existing files.
 
 ### Patch Documentation Or Tutorials Only
 
