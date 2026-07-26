@@ -1,5 +1,5 @@
 name: 'Upload to NexusMC'
-description: 'Upload file to NexusMC to update resource'
+description: 'Create, update, or publish NexusMC resources from files and GitHub Markdown'
 author: 'mcio-dev'
 branding:
   icon: 'upload'
@@ -9,76 +9,136 @@ inputs:
   api_token:
     description: 'NexusMC Personal API Token'
     required: true
-    type: string
+  operation:
+    description: 'Operation: auto, create, update, or publish-version. Auto updates when resource_id is set and creates otherwise.'
+    required: false
+    default: 'auto'
   resource_id:
-    description: 'NexusMC Resource ID'
-    required: true
-    type: string
+    description: 'NexusMC Resource ID. Required for update and publish-version.'
+    required: false
+  resource_data:
+    description: 'Complete resource create/update fields as a JSON object. Dedicated inputs override matching fields.'
+    required: false
+  version_data:
+    description: 'Complete independent-version fields as a JSON object. Used by operation=publish-version.'
+    required: false
+  title:
+    description: 'Resource title. Required with category and content when creating a resource.'
+    required: false
+  description:
+    description: 'Resource description'
+    required: false
+  content:
+    description: 'Resource content as TipTap JSON or a plain string'
+    required: false
+  content_markdown:
+    description: 'GitHub Flavored Markdown converted to NexusMC TipTap content'
+    required: false
+  content_markdown_path:
+    description: 'Path to a UTF-8 GitHub Markdown file converted to NexusMC TipTap content'
+    required: false
+  category:
+    description: 'Resource category ID or category value'
+    required: false
+  platform:
+    description: 'Resource platform'
+    required: false
   file_path:
     description: 'Path to one file to upload (legacy compatible; use files for multiple files)'
     required: false
-    type: string
   files:
-    description: 'Resource files as JSON array. Each item supports path, isPrimary, subcategoryIds, loaderIds, gameVersions, mcVersions, extractCode, and extra resource file fields.'
+    description: 'Local resource files as a JSON array. Each item requires path and accepts NexusMC files[] metadata.'
     required: false
-    type: string
   if_no_files_found:
-    description: 'Behavior when file_path/files are provided but no files exist. Options: warn, error, ignore.'
+    description: 'Behavior for missing file_path/files paths: warn, error, or ignore'
     required: false
     default: 'error'
-    type: string
+  upload_strategy:
+    description: 'Upload strategy: auto, direct, standard, or chunk. Auto follows the official fallback flow.'
+    required: false
+    default: 'auto'
+  chunk_size_mb:
+    description: 'Chunk size in MB for chunk upload; maximum 20'
+    required: false
+    default: '8'
+  request_timeout_seconds:
+    description: 'Timeout in seconds for each request and for chunk merge polling'
+    required: false
+    default: '900'
   version:
-    description: 'Resource version number'
+    description: 'Resource or release version number'
     required: false
-    type: string
+  version_tag:
+    description: 'Enabled NexusMC version Tag key, validated through /api/resources/version-tags'
+    required: false
   version_title:
-    description: 'Version title'
+    description: 'Version title. Maps to title for the independent version endpoint.'
     required: false
-    type: string
   changelog:
-    description: 'Changelog for the new version'
+    description: 'Changelog as TipTap JSON or a plain string'
     required: false
-    type: string
+  changelog_markdown:
+    description: 'GitHub Flavored Markdown converted to a NexusMC TipTap changelog'
+    required: false
+  changelog_markdown_path:
+    description: 'Path to a UTF-8 GitHub Markdown file converted to a NexusMC TipTap changelog'
+    required: false
+  markdown_link_base_url:
+    description: 'Base URL for relative Markdown links; defaults to the current GitHub commit when available'
+    required: false
+  markdown_image_base_url:
+    description: 'Base URL for relative Markdown images; defaults to the current GitHub commit raw URL when available'
+    required: false
   publish_version:
-    description: 'Whether to publish as a new version. Omit it when only patching metadata, docs, or tutorials.'
-    required: true
-    type: boolean
+    description: 'Explicitly request a version record during resource update. Files may trigger a version regardless.'
+    required: false
+  download_type:
+    description: 'Download type: local or external. Defaults to local when local files are uploaded.'
+    required: false
   mc_versions:
-    description: 'Supported Minecraft versions (JSON array)'
+    description: 'Supported Minecraft versions as a JSON array; [] clears the field'
     required: false
-    type: string
   tags:
-    description: 'Custom tags (JSON array)'
+    description: 'Custom tags as a JSON array; [] clears the field'
     required: false
-    type: string
   official_tags:
-    description: 'Official tags (JSON array)'
+    description: 'Official tags as a JSON array; [] clears the field'
     required: false
-    type: string
   cover_image_path:
-    description: 'Path to cover image file'
+    description: 'Path to a cover image uploaded with purpose=cover'
     required: false
-    type: string
   tutorial_post_ids:
-    description: 'Tutorial post IDs (JSON array)'
+    description: 'Tutorial post IDs as a JSON array; [] clears the field'
     required: false
-    type: string
   documentation_post_refs:
-    description: 'Documentation post references (JSON array)'
+    description: 'Documentation post references as a JSON array; [] clears the field'
     required: false
-    type: string
   documentation_url:
-    description: 'External documentation URL'
+    description: 'External documentation URL. Use resource_data with null to clear it.'
     required: false
-    type: string
   dependencies:
-    description: 'Dependencies (JSON array)'
+    description: 'Dependencies as a JSON array; [] clears the field'
     required: false
-    type: string
   is_draft:
-    description: 'Save as draft. Omit it to leave the current draft/publish state unchanged.'
+    description: 'Draft state. Omit it to preserve the current state during update.'
     required: false
-    type: boolean
+
+outputs:
+  operation:
+    description: 'Operation that was executed'
+    value: ${{ steps.run.outputs.operation }}
+  resource_id:
+    description: 'Created or updated resource ID'
+    value: ${{ steps.run.outputs.resource_id }}
+  resource_url:
+    description: 'Public NexusMC resource URL'
+    value: ${{ steps.run.outputs.resource_url }}
+  status:
+    description: 'Resource or version status returned by NexusMC'
+    value: ${{ steps.run.outputs.status }}
+  version_id:
+    description: 'Created version ID when returned by NexusMC'
+    value: ${{ steps.run.outputs.version_id }}
 
 runs:
   using: 'composite'
@@ -91,18 +151,38 @@ runs:
         npm run build
 
     - name: Run Upload to NexusMC action
+      id: run
       shell: bash
       working-directory: ${{ github.workspace }}
       env:
         INPUT_API_TOKEN: ${{ inputs.api_token }}
+        INPUT_OPERATION: ${{ inputs.operation }}
         INPUT_RESOURCE_ID: ${{ inputs.resource_id }}
+        INPUT_RESOURCE_DATA: ${{ inputs.resource_data }}
+        INPUT_VERSION_DATA: ${{ inputs.version_data }}
+        INPUT_TITLE: ${{ inputs.title }}
+        INPUT_DESCRIPTION: ${{ inputs.description }}
+        INPUT_CONTENT: ${{ inputs.content }}
+        INPUT_CONTENT_MARKDOWN: ${{ inputs.content_markdown }}
+        INPUT_CONTENT_MARKDOWN_PATH: ${{ inputs.content_markdown_path }}
+        INPUT_CATEGORY: ${{ inputs.category }}
+        INPUT_PLATFORM: ${{ inputs.platform }}
         INPUT_FILE_PATH: ${{ inputs.file_path }}
         INPUT_FILES: ${{ inputs.files }}
         INPUT_IF_NO_FILES_FOUND: ${{ inputs.if_no_files_found }}
+        INPUT_UPLOAD_STRATEGY: ${{ inputs.upload_strategy }}
+        INPUT_CHUNK_SIZE_MB: ${{ inputs.chunk_size_mb }}
+        INPUT_REQUEST_TIMEOUT_SECONDS: ${{ inputs.request_timeout_seconds }}
         INPUT_VERSION: ${{ inputs.version }}
+        INPUT_VERSION_TAG: ${{ inputs.version_tag }}
         INPUT_VERSION_TITLE: ${{ inputs.version_title }}
         INPUT_CHANGELOG: ${{ inputs.changelog }}
+        INPUT_CHANGELOG_MARKDOWN: ${{ inputs.changelog_markdown }}
+        INPUT_CHANGELOG_MARKDOWN_PATH: ${{ inputs.changelog_markdown_path }}
+        INPUT_MARKDOWN_LINK_BASE_URL: ${{ inputs.markdown_link_base_url }}
+        INPUT_MARKDOWN_IMAGE_BASE_URL: ${{ inputs.markdown_image_base_url }}
         INPUT_PUBLISH_VERSION: ${{ inputs.publish_version }}
+        INPUT_DOWNLOAD_TYPE: ${{ inputs.download_type }}
         INPUT_MC_VERSIONS: ${{ inputs.mc_versions }}
         INPUT_TAGS: ${{ inputs.tags }}
         INPUT_OFFICIAL_TAGS: ${{ inputs.official_tags }}

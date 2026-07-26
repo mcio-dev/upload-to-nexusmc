@@ -1,22 +1,31 @@
 {
   "name": "upload-to-nexusmc",
   "version": "1.0.0",
-  "description": "Upload file to NexusMC to update resource",
+  "description": "Create, update, and publish NexusMC resources from files and GitHub Markdown",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "npm run build && node --test test/index.test.js test/api.test.js test/markdown.test.js"
+  },
+  "engines": {
+    "node": ">=20"
   },
   "keywords": [
     "github-action",
     "nexusmc",
-    "upload"
+    "upload",
+    "markdown",
+    "tiptap"
   ],
   "author": "",
   "license": "MIT",
   "dependencies": {
     "@actions/core": "^1.10.0",
-    "@actions/github": "^5.1.1"
+    "mdast-util-from-markdown": "^2.0.3",
+    "mdast-util-gfm": "^3.1.0",
+    "mdast-util-math": "^3.0.0",
+    "micromark-extension-gfm": "^3.0.0",
+    "micromark-extension-math": "^3.1.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

@@ -1,19 +1,44 @@
 name: 'Test Upload to NexusMC Action'
 
 on:
+  push:
+  pull_request:
   workflow_dispatch:
     inputs:
       resource_id:
-        description: 'NexusMC Resource ID'
+        description: 'NexusMC Resource ID for the live integration test'
         required: true
         type: string
       version:
-        description: 'Version to set'
+        description: 'Version to set during the live integration test'
         required: true
         type: string
 
+permissions:
+  contents: read
+
 jobs:
-  test-upload:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build and test
+        run: npm test
+
+  integration:
+    if: github.event_name == 'workflow_dispatch'
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -24,16 +49,12 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Build action
-        run: |
-          npm install
-          npm run build
-
-      - name: Upload to NexusMC
+      - name: Update a draft resource through the local action
         uses: ./
         with:
           api_token: ${{ secrets.NEXUSMC_API_TOKEN }}
-          resource_id: ${{ github.event.inputs.resource_id }}
+          operation: update
+          resource_id: ${{ inputs.resource_id }}
           files: |
             [
               {
@@ -46,10 +67,12 @@ jobs:
                 "gameVersions": ["1.21"]
               }
             ]
-          if_no_files_found: warn
-          version: ${{ github.event.inputs.version }}
-          version_title: "Test Upload"
-          changelog: "This is a test upload from GitHub Actions"
+          if_no_files_found: error
+          upload_strategy: auto
+          version: ${{ inputs.version }}
+          version_tag: releases
+          version_title: 'GitHub Actions integration test'
+          changelog_markdown: '**Live integration test** from GitHub Actions'
           publish_version: true
           tags: '["test", "github-actions"]'
           is_draft: true

@@ -1,188 +1,85 @@
-# GitHub Actions 工作流：上传文件到 NexusMC 更新资源
+# GitHub Action：NexusMC 资源创建、更新与版本发布
 
-## 1. 概述
+## 1. 当前目标
 
-此项目是一个可复用的 **GitHub Action**（JavaScript/TypeScript），可通过 `uses:` 在其他仓库的工作流中引用。
+本项目提供可复用的 TypeScript GitHub Action，并对齐 NexusMC 当前个人 API：
 
-### 功能特性
-- 上传资源文件到 NexusMC（本地文件）
-- 更新现有资源的版本信息
+- 创建新资源：`POST /api/resources`
+- 局部更新已有资源：`PATCH /api/resources/{id}`
+- 独立发布资源版本：`POST /api/resources/{id}/versions`
+- 动态读取版本 Tag：`GET /api/resources/version-tags`
+- 按官方推荐流程上传普通文件、多个文件、封面和大文件
 
-### 使用方式
-```yaml
-- uses: your-username/upload-to-nexusmc@v1
-  with:
-    api_token: ${{ secrets.NEXUSMC_API_TOKEN }}
-    resource_id: ${{ secrets.NEXUSMC_RESOURCE_ID }}
-    file_path: dist/my-plugin.jar
-    version: 1.2.0
-```
+## 2. 操作模式
 
-## 2. 输入参数（Inputs）
+| `operation` | 行为 |
+|---|---|
+| `auto` | 有 `resource_id` 时更新，否则创建 |
+| `create` | 显式创建资源 |
+| `update` | 显式更新已有资源 |
+| `publish-version` | 调用独立版本接口 |
 
-### 2.1 必需参数
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `api_token` | string | NexusMC 个人 API Token |
-| `resource_id` | string | NexusMC 资源 ID |
-| `file_path` | string | 要上传的文件路径 |
+旧版的 `resource_id + file_path` 用法仍会解析为更新操作。
 
-### 2.2 版本信息参数
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `version` | string | 资源版本号，最长 50 字符 |
-| `version_title` | string | 新版本标题 |
-| `changelog` | string | 更新日志 |
-| `publish_version` | boolean | 是否发布新版本（默认：true） |
-| `mc_versions` | string | 支持的 Minecraft 版本（JSON 数组，如 ["1.20.1"]） |
+## 3. 上传流程
 
-### 2.3 标签参数
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `tags` | string | 自定义标签（JSON 数组） |
-| `official_tags` | string | 官方标签（JSON 数组） |
+默认 `upload_strategy=auto`：
 
-### 2.4 封面图参数
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `cover_image_path` | string | 封面图文件路径（可选） |
+1. 调用 `/api/upload/direct/init` 初始化直传。
+2. 按响应中的临时地址、方法和请求头上传文件。
+3. 调用 `/api/upload/direct/complete` 确认。
+4. 直传不可用时降级到 `/api/upload`。
+5. 普通上传因文件大小被拒绝时，改用 `/api/upload/session/...` 分块上传并轮询合并状态。
 
-### 2.5 关联内容参数
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `tutorial_post_ids` | string | 关联教程帖 ID（JSON 数组） |
-| `documentation_post_refs` | string | 文档引用（JSON 数组） |
-| `documentation_url` | string | 外部文档地址 |
-| `dependencies` | string | 依赖资源列表（JSON 数组） |
+每个文件独立执行上述流程。上传返回的 `url`、`filename`、`size`、`sha256` 和 `sha1` 会映射到资源 `files[]`。
 
-### 2.6 草稿参数
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `is_draft` | boolean | 是否保存为草稿（默认：false） |
+封面使用 `/api/upload/image`，并明确传递 `purpose=cover`。
 
-## 3. 工作流程
+## 4. 数据契约
 
-```mermaid
-graph TD
-    A[开始] --> B[获取输入参数]
-    B --> C[验证必填参数<br/>api_token/resource_id/file_path]
-    C --> D{验证通过?}
-    D -->|否| E[输出错误并退出]
-    D -->|是| F[上传资源文件]
-    F --> G{上传成功?}
-    G -->|否| H[输出错误并退出]
-    G -->|是| I{有cover_image_path?}
-    I -->|是| J[上传封面图]
-    I -->|否| K[构建更新请求]
-    J --> K
-    K --> L[调用更新资源 API<br/>PATCH /api/resources/{id}]
-    L --> M{更新成功?}
-    M -->|否| N[输出错误并退出]
-    M -->|是| O[输出成功信息]
-    E --> P[结束]
-    H --> P
-    N --> P
-    O --> P
-```
+- 常用字段使用独立 Action input。
+- `resource_data` 接受完整资源创建或更新 JSON，可传官方文档中的其他字段及 `null`。
+- `version_data` 接受独立版本接口的完整 JSON。
+- 独立 input 覆盖 JSON 对象中的同名字段。
+- 数组 `[]` 必须原样发送，用于清空服务端已有关系或标签。
+- 省略字段表示保留原值。
+- 上传本地文件且未指定 `downloadType` 时自动使用 `local`。
 
-## 4. API 调用详情
+## 5. 发布语义
 
-### 4.1 上传资源文件
-- **端点**：`POST https://www.nexusmc.cn/api/upload`
-- **认证**：`Authorization: Bearer ${{ inputs.api_token }}`
-- **Content-Type**：`multipart/form-data`
-- **字段**：`file`（二进制文件）
+更新非草稿资源时，NexusMC 在以下任一条件成立时创建版本记录：
 
-### 4.2 上传封面图（可选）
-- **端点**：`POST https://www.nexusmc.cn/api/upload/image`
-- **认证**：`Authorization: Bearer ${{ inputs.api_token }}`
+- `publishVersion=true`
+- 请求包含 `files` 或其他文件相关字段
 
-### 4.3 更新资源
-- **端点**：`PATCH https://www.nexusmc.cn/api/resources/{resource_id}`
-- **认证**：`Authorization: Bearer ${{ inputs.api_token }}`
-- **Content-Type**：`application/json`
+因此 `publishVersion=false` 不能阻止包含新文件的请求创建版本。Action 在这种组合下输出警告。
 
-## 5. 文件结构
+`versionTag` 在写入前通过 `/api/resources/version-tags` 获取当前启用值并验证，不在客户端固定枚举。
 
-```
-.
-├── .github/
-│   └── workflows/
-│       └── test-action.yml        # 测试工作流
-├── action.yml                     # Action 元数据定义
-├── package.json                   # Node.js 依赖
-├── tsconfig.json                  # TypeScript 配置
-├── src/
-│   ├── index.ts                  # 入口点
-│   ├── api.ts                    # API 调用逻辑
-│   ├── types.ts                  # 类型定义
-│   └── utils.ts                  # 工具函数
-├── dist/
-│   └── index.js                  # 编译后的代码
-├── .gitignore
-├── README.md                      # 使用说明
-└── LICENSE
-```
+## 6. GitHub Markdown 转换
 
-## 6. 响应代码处理
+NexusMC API 不会把字符串解析成 Markdown，因此 Action 在发送请求前提供独立转换层：
 
-| 状态码 | 含义 | 处理方式 |
-|--------|------|----------|
-| 200 | 成功 | 正常结束 |
-| 400 | 请求参数错误 | 输出错误详情，退出码 1 |
-| 401 | 未授权 | 检查 API Token，退出码 1 |
-| 403 | 权限不足 | 检查 Token scope，退出码 1 |
-| 404 | 资源不存在 | 检查资源 ID，退出码 1 |
-| 500 | 服务器错误 | 输出错误信息，退出码 1 |
+- `content_markdown` / `content_markdown_path` 转换资源正文。
+- `changelog_markdown` / `changelog_markdown_path` 转换版本说明。
+- 使用 CommonMark、GFM 和数学扩展生成 MDAST，再映射到 NexusMC TipTap JSON。
+- 支持标题、文本 marks、链接、图片、引用、列表、任务列表、表格、代码、Mermaid 和数学公式。
+- GitHub Actions 环境下，相对链接和图片固定到当前仓库提交；可通过两个 base URL input 覆盖。
+- 原始 HTML 不直接注入 TipTap；危险 URL 协议会被移除。
+- NexusMC 特有且无法从标准 Markdown 推导的节点继续通过显式 TipTap JSON 提供。
 
-## 7. 依赖包
+## 7. 工程约束
 
-```json
-{
-  "@actions/core": "^1.10.0",
-  "@actions/github": "^5.1.1",
-  "typescript": "^5.0.0"
-}
-```
+- Node.js 20 或更高版本。
+- 资源创建、更新和版本发布请求不自动重试，避免重复创建内容。
+- 上传和只读请求只对网络错误、限流和临时服务错误进行有限重试。
+- 所有网络请求都有超时。
+- 分块上传失败时尝试取消服务端会话。
+- API 非 JSON 错误响应也必须保留状态码和正文。
 
-## 8. 使用示例
+## 8. 验证
 
-### 基本用法
-```yaml
-- uses: your-username/upload-to-nexusmc@v1
-  with:
-    api_token: ${{ secrets.NEXUSMC_API_TOKEN }}
-    resource_id: ${{ secrets.NEXUSMC_RESOURCE_ID }}
-    file_path: dist/my-plugin.jar
-    version: 1.2.0
-```
-
-### 完整参数示例
-```yaml
-- uses: your-username/upload-to-nexusmc@v1
-  with:
-    api_token: ${{ secrets.NEXUSMC_API_TOKEN }}
-    resource_id: ${{ secrets.NEXUSMC_RESOURCE_ID }}
-    file_path: dist/my-plugin.jar
-    cover_image_path: dist/cover.png
-    version: 1.2.0
-    version_title: "支持 Minecraft 1.21"
-    changelog: |
-      - 修复了XXX问题
-      - 优化了性能
-    mc_versions: '["1.20.1", "1.21"]'
-    tags: '["自动同步", "功能增强"]'
-    official_tags: '["兼容"]'
-    documentation_url: https://docs.example.com
-    is_draft: false
-```
-
-### 仅更新版本信息（不上传新文件）
-```yaml
-- uses: your-username/upload-to-nexusmc@v1
-  with:
-    api_token: ${{ secrets.NEXUSMC_API_TOKEN }}
-    resource_id: ${{ secrets.NEXUSMC_RESOURCE_ID }}
-    version: 1.2.0
-    changelog: "更新日志内容"
-```
+- `npm run build`：TypeScript 严格模式编译。
+- `npm test`：构建并运行 Node.js 单元测试。
+- push 和 pull request 自动运行构建与测试。
+- 真实 NexusMC 集成测试仅通过 `workflow_dispatch` 手动执行。
