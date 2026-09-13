@@ -96,13 +96,13 @@ inputs:
     description: 'Download type: local or external. Defaults to local when local files are uploaded.'
     required: false
   mc_versions:
-    description: 'Supported Minecraft versions as a JSON array; required for create unless files metadata supplies versions; [] clears the field'
+    description: 'Supported Minecraft versions as a JSON array; required for create unless files metadata supplies versions; [] follows server rules and may preserve existing versions'
     required: false
   tags:
     description: 'Custom tags as a JSON array; [] clears the field'
     required: false
   official_tags:
-    description: 'Official tags as a JSON array; [] clears the field'
+    description: 'Official tags as a JSON array; [] clears only when category and tag-group minimum selection permits it'
     required: false
   cover_image_path:
     description: 'Path to a cover image uploaded with purpose=cover'

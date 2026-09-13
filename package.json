@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
-    "test": "npm run build && node --test test/index.test.js test/api.test.js test/markdown.test.js"
+    "test": "npm run build && node --test test/index.test.js test/api.test.js test/markdown.test.js test/documentation.test.js"
   },
   "engines": {
     "node": ">=20"

@@ -132,7 +132,7 @@ Upload response hashes are automatically copied to `files[].sha256` and `files[]
     dependencies: '[]'
 ```
 
-Array fields are sent even when empty, so `[]` clears the existing server value. Omit an input to preserve its current value. Use `resource_data` with `null` to clear nullable URL or image fields.
+Array inputs are sent when provided, including empty arrays, but server-side validation still applies. Fields such as `tags`, `dependencies`, `tutorial_post_ids`, and `documentation_post_refs` can be cleared with `[]`; `mc_versions` may preserve existing versions or be rejected when a non-empty version is required; `official_tags` may be rejected when the selected category requires the minimum selection. `files: []` means that no local files are uploaded and does not clear remote files. Omit an input to preserve its current value. Use `resource_data` with `null` to clear nullable URL or image fields.
 
 For `operation: publish-version`, `version_data` provides the same JSON-object escape hatch for independent version fields. Dedicated version inputs override matching values.
 
@@ -230,9 +230,9 @@ Cover images use `POST /api/upload/image` with `purpose=cover`.
 | `markdown_image_base_url` | No | Explicit base URL for relative Markdown images |
 | `publish_version` | No | Explicitly request a version during resource update |
 | `download_type` | No | `local` or `external` |
-| `mc_versions` | No | JSON array; required for create unless `files[].gameVersions`/`mcVersions` supplies a version; `[]` clears it |
+| `mc_versions` | No | JSON array; required for create unless `files[].gameVersions`/`mcVersions` supplies a version; on update or publish, an empty array follows server rules and may preserve existing versions |
 | `tags` | No | JSON array; `[]` clears it |
-| `official_tags` | No | JSON array; `[]` clears it |
+| `official_tags` | No | JSON array; `[]` clears it only when category and tag-group validation permits it |
 | `cover_image_path` | No | Local cover image path |
 | `tutorial_post_ids` | No | JSON array; `[]` clears it |
 | `documentation_post_refs` | No | JSON array; `[]` clears it |
