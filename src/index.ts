@@ -375,11 +375,40 @@ function requireResourceId(operation: string, resourceId?: string): string {
   return resourceId;
 }
 
-function validateCreateData(data: ResourceMutationData): void {
+export function validateCreateData(data: ResourceMutationData): void {
   for (const field of ['title', 'content', 'category']) {
     if (data[field] === undefined || data[field] === null || data[field] === '') {
       throw new Error(`${field} is required when creating a resource`);
     }
+  }
+}
+
+function hasNonEmptyStringArray(value: unknown): boolean {
+  return Array.isArray(value) && value.some((item) => typeof item === 'string' && item.trim().length > 0);
+}
+
+export function hasResourceGameVersions(data: Record<string, unknown>): boolean {
+  if (hasNonEmptyStringArray(data.mcVersions) || hasNonEmptyStringArray(data.gameVersions)) return true;
+
+  for (const field of ['files', 'additionalFiles']) {
+    const files = data[field];
+    if (!Array.isArray(files)) continue;
+    if (files.some((file) => {
+      if (!file || typeof file !== 'object') return false;
+      const metadata = file as Record<string, unknown>;
+      return hasNonEmptyStringArray(metadata.gameVersions) || hasNonEmptyStringArray(metadata.mcVersions);
+    })) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+export function validateCreateResourceData(data: ResourceMutationData): void {
+  validateCreateData(data);
+  if (!hasResourceGameVersions(data)) {
+    throw new Error('At least one Minecraft version is required when creating a resource (mc_versions or files[].gameVersions)');
   }
 }
 
@@ -389,6 +418,21 @@ function hasOwnField(data: Record<string, unknown>, field: string): boolean {
 
 function hasNonEmptyFiles(data: Record<string, unknown>): boolean {
   return Array.isArray(data.files) && data.files.length > 0;
+}
+
+const VERSION_TRIGGERING_FILE_FIELDS = [
+  'fileUrl',
+  'extractCode',
+  'fileSize',
+  'fileName',
+  'fileSha256',
+  'fileSha1',
+  'files',
+  'additionalFiles'
+] as const;
+
+export function hasVersionTriggeringFileFields(data: Record<string, unknown>): boolean {
+  return VERSION_TRIGGERING_FILE_FIELDS.some((field) => hasOwnField(data, field));
 }
 
 function validateCoverImagePath(coverImagePath?: string): void {
@@ -414,17 +458,46 @@ async function validateVersionTag(data: Record<string, unknown>, options: ApiReq
   }
 }
 
+export function getResourceOutput(
+  resourceId: string,
+  result: Record<string, unknown> = {}
+): { resourceUrl: string; status: string; versionId: string } {
+  const pathValue = typeof result.path === 'string' ? result.path.trim() : '';
+  const slugValue = typeof result.slug === 'string' ? result.slug.trim() : '';
+  const publicIdValue = typeof result.publicId === 'string' || typeof result.publicId === 'number'
+    ? String(result.publicId).trim()
+    : '';
+  let resourceUrl = `${SITE_BASE_URL}/resources/${encodeURIComponent(resourceId)}`;
+  if (/^https?:\/\//i.test(pathValue)) resourceUrl = pathValue;
+  else if (pathValue.startsWith('/')) resourceUrl = `${SITE_BASE_URL}${pathValue}`;
+  else if (slugValue) resourceUrl = `${SITE_BASE_URL}/resources/${encodeURIComponent(slugValue)}`;
+  else if (publicIdValue) resourceUrl = `${SITE_BASE_URL}/resources/${encodeURIComponent(publicIdValue)}`;
+
+  const versionUpdate = result.versionUpdate && typeof result.versionUpdate === 'object'
+    ? result.versionUpdate as Record<string, unknown>
+    : undefined;
+  const versionId = typeof versionUpdate?.id === 'string'
+    ? versionUpdate.id
+    : typeof result.versionId === 'string' ? result.versionId : '';
+  const status = typeof versionUpdate?.status === 'string'
+    ? versionUpdate.status
+    : typeof result.status === 'string' ? result.status : '';
+  return { resourceUrl, status, versionId };
+}
+
 function setCommonOutputs(
   operation: Exclude<Operation, 'auto'>,
   resourceId: string,
-  status?: string,
-  versionId?: string
+  result: Record<string, unknown> = {},
+  versionIdOverride?: string
 ): void {
+  const output = getResourceOutput(resourceId, result);
+  if (versionIdOverride) output.versionId = versionIdOverride;
   core.setOutput('operation', operation);
   core.setOutput('resource_id', resourceId);
-  core.setOutput('resource_url', `${SITE_BASE_URL}/resources/${resourceId}`);
-  core.setOutput('status', status || '');
-  core.setOutput('version_id', versionId || '');
+  core.setOutput('resource_url', output.resourceUrl);
+  core.setOutput('status', output.status);
+  core.setOutput('version_id', output.versionId);
 }
 
 export async function run(): Promise<void> {
@@ -505,7 +578,7 @@ export async function run(): Promise<void> {
         if (versionData.downloadType === undefined) versionData.downloadType = 'local';
       }
       const result = await createResourceVersion(inputs.apiToken, resourceId, versionData, apiOptions);
-      setCommonOutputs(operation, resourceId, result.status, result.id);
+      setCommonOutputs(operation, resourceId, result, result.id);
       core.info(`Version published successfully: ${result.version || result.id}`);
       return;
     }
@@ -516,14 +589,15 @@ export async function run(): Promise<void> {
       if (mutationData.downloadType === undefined) mutationData.downloadType = 'local';
     }
     if (coverImageUrl) mutationData.coverImage = coverImageUrl;
-    if (operation === 'update' && hasOwnField(mutationData, 'files') && mutationData.publishVersion === false) {
-      core.warning('NexusMC creates a version for non-draft resources whenever files are supplied; publish_version=false cannot suppress that server behavior.');
+    if (operation === 'create') validateCreateResourceData(mutationData);
+    if (operation === 'update' && hasVersionTriggeringFileFields(mutationData) && mutationData.publishVersion !== true) {
+      core.warning('NexusMC creates a version for non-draft resources whenever file-related fields are supplied; publish_version=false or omission cannot suppress that server behavior.');
     }
 
     if (operation === 'create') {
       const result = await createResource(inputs.apiToken, mutationData, apiOptions);
       if (!result?.id) throw new Error('Resource creation response did not include an id');
-      setCommonOutputs(operation, result.id, result.status);
+      setCommonOutputs(operation, result.id, result);
       core.info(`Resource created successfully: ${result.id}`);
       return;
     }
@@ -534,7 +608,7 @@ export async function run(): Promise<void> {
       return;
     }
     const result = await updateResource(inputs.apiToken, resourceId, mutationData, apiOptions);
-    setCommonOutputs(operation, result.id || resourceId, result.status, result.versionId);
+    setCommonOutputs(operation, result.id || resourceId, result);
     core.info(`Resource updated successfully: ${result.id || resourceId}`);
   } catch (error) {
     core.setFailed(`Action failed: ${(error as Error).message}`);

@@ -20,7 +20,7 @@ Store the token as an Actions secret such as `NEXUSMC_API_TOKEN`. Store an exist
 | Operation | API | Required values |
 |---|---|---|
 | `auto` | Creates without `resource_id`; updates with it | Depends on resolved operation |
-| `create` | `POST /api/resources` | `title`, `category`, `content` |
+| `create` | `POST /api/resources` | `title`, `category`, `content`, and an effective Minecraft version (`mc_versions` or file metadata) |
 | `update` | `PATCH /api/resources/{id}` | `resource_id` and at least one update field |
 | `publish-version` | `POST /api/resources/{id}/versions` | `resource_id`, `version` |
 
@@ -41,7 +41,7 @@ Store the token as an Actions secret such as `NEXUSMC_API_TOKEN`. Store an exist
     publish_version: true
 ```
 
-The NexusMC API creates a version for a non-draft resource whenever an update contains `files`, even when `publish_version` is omitted or false. `publish_version: true` is an explicit request, not a way to suppress the server's file-triggered version behavior.
+The NexusMC API creates a version for a non-draft resource whenever an update contains `publish_version: true` or any file-related API field (`fileUrl`, `extractCode`, `fileSize`, `fileName`, `fileSha256`, `fileSha1`, `files`, or `additionalFiles`, normally passed through `resource_data`), even when `publish_version` is omitted or false. `publish_version: true` is an explicit request, not a way to suppress the server's file-triggered version behavior.
 
 ## Create A Resource
 
@@ -57,6 +57,7 @@ Without `resource_id`, the default `auto` operation creates a resource:
     content_markdown_path: README.md
     version: 1.0.0
     version_tag: releases
+    mc_versions: '["1.21.1"]'
     file_path: build/libs/MyPlugin-1.0.0.jar
     is_draft: true
 ```
@@ -211,7 +212,7 @@ Cover images use `POST /api/upload/image` with `purpose=cover`.
 | `content` | Create | TipTap JSON or plain string content |
 | `content_markdown` | Create | Inline GitHub Markdown converted to TipTap |
 | `content_markdown_path` | Create | UTF-8 GitHub Markdown file converted to TipTap |
-| `category` | Create | Resource category ID or value |
+| `category` | Create | Resource category filterValue or slug |
 | `platform` | No | Resource platform |
 | `file_path` | No | One exact local file path; legacy-compatible input |
 | `files` | No | JSON array of local paths and per-file metadata |
@@ -229,7 +230,7 @@ Cover images use `POST /api/upload/image` with `purpose=cover`.
 | `markdown_image_base_url` | No | Explicit base URL for relative Markdown images |
 | `publish_version` | No | Explicitly request a version during resource update |
 | `download_type` | No | `local` or `external` |
-| `mc_versions` | No | JSON array; `[]` clears it |
+| `mc_versions` | No | JSON array; required for create unless `files[].gameVersions`/`mcVersions` supplies a version; `[]` clears it |
 | `tags` | No | JSON array; `[]` clears it |
 | `official_tags` | No | JSON array; `[]` clears it |
 | `cover_image_path` | No | Local cover image path |

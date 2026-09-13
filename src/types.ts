@@ -165,6 +165,14 @@ export interface ResourceResponse {
   category?: string;
   version?: string;
   versionId?: string;
+  slug?: string;
+  publicId?: number | string;
+  path?: string;
+  versionUpdate?: {
+    id?: string;
+    status?: string;
+    [key: string]: unknown;
+  };
   createdAt?: string;
   updatedAt?: string;
   [key: string]: unknown;

@@ -6,9 +6,12 @@ const {
   buildResourceMutationData,
   buildResourceVersionData,
   getResourceFileInputs,
+  getResourceOutput,
+  hasVersionTriggeringFileFields,
   mapUploadedResourceFiles,
   parseResourceFilesInput,
-  resolveOperation
+  resolveOperation,
+  validateCreateResourceData
 } = require('../dist/index.js');
 
 function baseInputs(overrides = {}) {
@@ -107,6 +110,60 @@ test('auto operation creates without a resource ID and updates with one', () => 
   assert.equal(resolveOperation('auto'), 'create');
   assert.equal(resolveOperation('auto', 'resource-id'), 'update');
   assert.equal(resolveOperation('publish-version', 'resource-id'), 'publish-version');
+});
+
+test('create validation accepts resource-level and per-file Minecraft versions', () => {
+  assert.throws(
+    () => validateCreateResourceData({ title: 'Plugin', content: 'content', category: 'plugin' }),
+    /Minecraft version/
+  );
+  assert.doesNotThrow(() => validateCreateResourceData({
+    title: 'Plugin',
+    content: 'content',
+    category: 'plugin',
+    mcVersions: ['1.21.1']
+  }));
+  assert.doesNotThrow(() => validateCreateResourceData({
+    title: 'Plugin',
+    content: 'content',
+    category: 'plugin',
+    files: [{ gameVersions: ['1.21.1'] }]
+  }));
+});
+
+test('version-triggering file fields match the Personal API contract', () => {
+  for (const field of [
+    'fileUrl',
+    'extractCode',
+    'fileSize',
+    'fileName',
+    'fileSha256',
+    'fileSha1',
+    'files',
+    'additionalFiles'
+  ]) {
+    assert.equal(hasVersionTriggeringFileFields({ [field]: field === 'files' ? [] : null }), true, field);
+  }
+  assert.equal(hasVersionTriggeringFileFields({ downloadType: 'local' }), false);
+});
+
+test('resource outputs prefer the server public path and nested version update', () => {
+  assert.deepEqual(
+    getResourceOutput('resource-uuid', {
+      path: '/resources/example-plugin',
+      status: 'approved',
+      versionUpdate: { id: 'version-id', status: 'pending' }
+    }),
+    {
+      resourceUrl: 'https://www.nexusmc.cn/resources/example-plugin',
+      status: 'pending',
+      versionId: 'version-id'
+    }
+  );
+  assert.equal(
+    getResourceOutput('resource-uuid', { slug: 'example-plugin' }).resourceUrl,
+    'https://www.nexusmc.cn/resources/example-plugin'
+  );
 });
 
 test('Markdown inputs become TipTap content with GitHub commit URL bases', async () => {
