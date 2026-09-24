@@ -54,7 +54,7 @@ inputs:
     required: false
     default: 'error'
   upload_strategy:
-    description: 'Upload strategy: auto, direct, standard, or chunk. Auto follows the official fallback flow.'
+    description: 'Upload strategy: auto, direct, standard, or chunk. Auto falls back to chunk upload after transient gateway or network failures.'
     required: false
     default: 'auto'
   chunk_size_mb:
@@ -62,7 +62,7 @@ inputs:
     required: false
     default: '8'
   request_timeout_seconds:
-    description: 'Timeout in seconds for each request and for chunk merge polling'
+    description: 'Timeout in seconds for API requests and chunk merge polling; auto direct transfers are capped at 60 seconds'
     required: false
     default: '900'
   version:

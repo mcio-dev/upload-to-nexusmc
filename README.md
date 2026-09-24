@@ -187,12 +187,12 @@ const document = await markdownToTiptap(markdown, {
 
 | Strategy | Behavior |
 |---|---|
-| `auto` | Preferred direct upload, then ordinary upload, then chunk upload when the ordinary endpoint rejects file size |
+| `auto` | Preferred direct upload, then ordinary upload, then chunk upload after transient gateway/network failures or file-size rejection |
 | `direct` | Direct initialization, temporary-address transfer, and confirmation only |
 | `standard` | `POST /api/upload` only |
 | `chunk` | Session initialization, bounded chunks, asynchronous merge polling, and failed-session cancellation |
 
-`auto` is the default. Files are uploaded individually so each file can use the official fallback flow independently. `chunk_size_mb` defaults to 8 and cannot exceed the API limit of 20 MB. `request_timeout_seconds` defaults to 900.
+`auto` is the default. Files are uploaded individually. A direct transfer that hits a transient network or gateway failure falls back to chunk upload; ordinary uploads also fall back to chunks for transient gateway failures or file-size rejection. In `auto` mode, the direct transfer attempt is capped at 60 seconds so an unavailable storage endpoint does not consume the full request timeout. `chunk_size_mb` defaults to 8 and cannot exceed the API limit of 20 MB. `request_timeout_seconds` defaults to 900 for API requests and chunk merge polling.
 
 When local resource files are uploaded, `downloadType` defaults to `local`. Set `download_type: external` only when supplying external download fields through `resource_data` or `version_data`.
 

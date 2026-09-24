@@ -10,6 +10,7 @@ const {
   createResourceVersion,
   getVersionTags,
   updateResource,
+  uploadFile,
   uploadFileDirect,
   uploadFileInChunks
 } = require('../dist/api.js');
@@ -141,6 +142,155 @@ test('chunk upload sends bounded parts and polls an asynchronous merge', async (
 
     assert.equal(calls.filter((call) => call.url.includes('/part/')).length, 2);
     assert.ok(calls.some((call) => call.url.endsWith('/status')));
+  } finally {
+    fs.unlinkSync(tempFile);
+  }
+});
+
+test('auto upload falls back to chunk upload after an EdgeOne 554 from direct transfer', async () => {
+  const tempFile = path.join(os.tmpdir(), `nexusmc-auto-554-direct-${process.pid}.jar`);
+  fs.writeFileSync(tempFile, '123456');
+  const calls = [];
+
+  try {
+    await withMockFetch(async (url, init) => {
+      const value = String(url);
+      calls.push({ url: value, method: init.method });
+      if (value.endsWith('/direct/init')) {
+        return jsonResponse({
+          uploadUrl: 'https://upload.example/direct',
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/java-archive' },
+          expiresIn: 900,
+          key: 'uploads/pending/direct.jar',
+          url: '/uploads/files/direct.jar',
+          bucketId: 'bucket',
+          filename: path.basename(tempFile),
+          size: 6
+        });
+      }
+      if (value === 'https://upload.example/direct') {
+        return new Response('Response Timeout by EdgeOne', { status: 554, statusText: 'Response Timeout by EdgeOne' });
+      }
+      if (value.endsWith('/session/init')) return jsonResponse({ uploadId: 'upload-id', chunkSize: 3, totalChunks: 2 });
+      if (value.includes('/part/')) return jsonResponse({ ok: true });
+      if (value.endsWith('/finish')) return jsonResponse({ processing: true, uploadId: 'upload-id' });
+      if (value.endsWith('/status')) {
+        return jsonResponse({
+          status: 'completed',
+          result: { url: '/uploads/files/chunk.jar', filename: 'chunk.jar', size: 6 }
+        });
+      }
+      throw new Error(`Unexpected URL: ${value}`);
+    }, async () => {
+      const result = await uploadFile('token', tempFile, 'auto', {
+        chunkSizeBytes: 3,
+        timeoutMs: 1000,
+        directTimeoutMs: 1000,
+        pollIntervalMs: 1,
+        retries: 0
+      });
+      assert.equal(result.url, '/uploads/files/chunk.jar');
+    });
+
+    assert.ok(calls.some((call) => call.url.endsWith('/session/init')));
+    assert.equal(calls.some((call) => call.url.endsWith('/api/upload')), false);
+  } finally {
+    fs.unlinkSync(tempFile);
+  }
+});
+
+test('auto upload falls back to chunk upload after the direct transfer times out', async () => {
+  const tempFile = path.join(os.tmpdir(), `nexusmc-auto-timeout-${process.pid}.jar`);
+  fs.writeFileSync(tempFile, '123456');
+  const calls = [];
+
+  try {
+    await withMockFetch(async (url, init) => {
+      const value = String(url);
+      calls.push({ url: value, method: init.method });
+      if (value.endsWith('/direct/init')) {
+        return jsonResponse({
+          uploadUrl: 'https://upload.example/direct',
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/java-archive' },
+          expiresIn: 900,
+          key: 'uploads/pending/direct.jar',
+          url: '/uploads/files/direct.jar',
+          bucketId: 'bucket',
+          filename: path.basename(tempFile),
+          size: 6
+        });
+      }
+      if (value === 'https://upload.example/direct') {
+        return new Promise((resolve, reject) => {
+          init.signal.addEventListener('abort', () => {
+            const error = new Error('aborted');
+            error.name = 'AbortError';
+            reject(error);
+          }, { once: true });
+        });
+      }
+      if (value.endsWith('/session/init')) return jsonResponse({ uploadId: 'upload-id', chunkSize: 3, totalChunks: 2 });
+      if (value.includes('/part/')) return jsonResponse({ ok: true });
+      if (value.endsWith('/finish')) return jsonResponse({ processing: true, uploadId: 'upload-id' });
+      if (value.endsWith('/status')) {
+        return jsonResponse({
+          status: 'completed',
+          result: { url: '/uploads/files/chunk.jar', filename: 'chunk.jar', size: 6 }
+        });
+      }
+      throw new Error(`Unexpected URL: ${value}`);
+    }, async () => {
+      const result = await uploadFile('token', tempFile, 'auto', {
+        chunkSizeBytes: 3,
+        timeoutMs: 5,
+        pollIntervalMs: 1,
+        retries: 0
+      });
+      assert.equal(result.url, '/uploads/files/chunk.jar');
+    });
+
+    assert.equal(calls.some((call) => call.url.endsWith('/api/upload')), false);
+  } finally {
+    fs.unlinkSync(tempFile);
+  }
+});
+
+test('auto upload falls back to chunk upload after a standard 554 response', async () => {
+  const tempFile = path.join(os.tmpdir(), `nexusmc-auto-554-standard-${process.pid}.jar`);
+  fs.writeFileSync(tempFile, '123456');
+  const calls = [];
+
+  try {
+    await withMockFetch(async (url, init) => {
+      const value = String(url);
+      calls.push({ url: value, method: init.method });
+      if (value.endsWith('/direct/init')) return new Response('direct unavailable', { status: 400 });
+      if (value.endsWith('/api/upload')) {
+        return new Response('Response Timeout by EdgeOne', { status: 554, statusText: 'Response Timeout by EdgeOne' });
+      }
+      if (value.endsWith('/session/init')) return jsonResponse({ uploadId: 'upload-id', chunkSize: 3, totalChunks: 2 });
+      if (value.includes('/part/')) return jsonResponse({ ok: true });
+      if (value.endsWith('/finish')) return jsonResponse({ processing: true, uploadId: 'upload-id' });
+      if (value.endsWith('/status')) {
+        return jsonResponse({
+          status: 'completed',
+          result: { url: '/uploads/files/chunk.jar', filename: 'chunk.jar', size: 6 }
+        });
+      }
+      throw new Error(`Unexpected URL: ${value}`);
+    }, async () => {
+      const result = await uploadFile('token', tempFile, 'auto', {
+        chunkSizeBytes: 3,
+        timeoutMs: 1000,
+        pollIntervalMs: 1,
+        retries: 0
+      });
+      assert.equal(result.url, '/uploads/files/chunk.jar');
+    });
+
+    assert.ok(calls.some((call) => call.url.endsWith('/session/init')));
   } finally {
     fs.unlinkSync(tempFile);
   }

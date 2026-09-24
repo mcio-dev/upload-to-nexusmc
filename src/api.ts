@@ -21,12 +21,14 @@ import {
 
 export interface ApiRequestOptions {
   timeoutMs?: number;
+  directTimeoutMs?: number;
   retries?: number;
   chunkSizeBytes?: number;
   pollIntervalMs?: number;
 }
 
 const DEFAULT_TIMEOUT_MS = 15 * 60 * 1000;
+const AUTO_DIRECT_TIMEOUT_MS = 60 * 1000;
 const DEFAULT_CHUNK_SIZE_BYTES = 8 * 1024 * 1024;
 const MAX_CHUNK_SIZE_BYTES = 20 * 1024 * 1024;
 
@@ -234,7 +236,7 @@ export async function uploadFileDirect(
     method: init.method,
     headers: init.headers,
     body: blob
-  }, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+  }, options.directTimeoutMs ?? options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
 
   if (!uploadResponse.ok) {
     const body = await parseResponseBody(uploadResponse);
@@ -267,6 +269,15 @@ function isFileTooLargeError(error: unknown): boolean {
   if (error instanceof ApiError && error.status === 413) return true;
   const message = (error as Error)?.message || '';
   return /too large|file size|maximum size|文件.*(?:过大|太大)|超过.*(?:限制|大小)/i.test(message);
+}
+
+function isTransientUploadError(error: unknown): boolean {
+  if (error instanceof ApiError && error.status !== undefined) {
+    return [408, 502, 503, 504, 554].includes(error.status);
+  }
+
+  const message = (error as Error)?.message || '';
+  return /timed out|timeout|fetch failed|network|socket hang up|econnreset|etimedout/i.test(message);
 }
 
 /** Upload one file in bounded-memory chunks and poll asynchronous merge status. */
@@ -363,7 +374,7 @@ export async function uploadFileInChunks(
   }
 }
 
-/** Upload one file using a selected strategy. Auto follows the official fallback flow. */
+/** Upload one file using a selected strategy. Auto falls back through direct, standard, and chunk upload. */
 export async function uploadFile(
   apiToken: string,
   filePath: string,
@@ -374,17 +385,28 @@ export async function uploadFile(
   if (strategy === 'standard') return uploadFileStandard(apiToken, filePath, options);
   if (strategy === 'chunk') return uploadFileInChunks(apiToken, filePath, options);
 
+  const directOptions = options.directTimeoutMs === undefined
+    ? {
+        ...options,
+        directTimeoutMs: Math.min(options.timeoutMs ?? DEFAULT_TIMEOUT_MS, AUTO_DIRECT_TIMEOUT_MS)
+      }
+    : options;
+
   try {
-    return await uploadFileDirect(apiToken, filePath, options);
+    return await uploadFileDirect(apiToken, filePath, directOptions);
   } catch (directError) {
-    core.warning(`Direct upload unavailable; falling back to standard upload: ${(directError as Error).message}`);
+    core.warning(`Direct upload unavailable: ${(directError as Error).message}`);
+    if (isTransientUploadError(directError)) {
+      core.warning(`Direct upload failed with a temporary network or gateway error; falling back to chunk upload: ${(directError as Error).message}`);
+      return uploadFileInChunks(apiToken, filePath, options);
+    }
   }
 
   try {
     return await uploadFileStandard(apiToken, filePath, options);
   } catch (standardError) {
-    if (!isFileTooLargeError(standardError)) throw standardError;
-    core.warning(`Standard upload rejected the file size; falling back to chunk upload: ${(standardError as Error).message}`);
+    if (!isFileTooLargeError(standardError) && !isTransientUploadError(standardError)) throw standardError;
+    core.warning(`Standard upload cannot complete the request; falling back to chunk upload: ${(standardError as Error).message}`);
     return uploadFileInChunks(apiToken, filePath, options);
   }
 }
